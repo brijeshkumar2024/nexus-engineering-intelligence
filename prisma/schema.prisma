@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role { OWNER ADMIN MEMBER VIEWER }
+enum JobStatus { QUEUED RUNNING COMPLETED FAILED CANCELLED }
+enum Severity { CRITICAL HIGH MEDIUM LOW INFO }
+
+model User {
+  id String @id @default(cuid())
+  githubId String @unique
+  login String
+  email String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  memberships Membership[]
+  repositories Repository[]
+  auditLogs AuditLog[]
+}
+
+model Workspace {
+  id String @id @default(cuid())
+  name String
+  plan String @default("FREE")
+  createdAt DateTime @default(now())
+  memberships Membership[]
+  repositories Repository[]
+  analyses RepositoryAnalysis[]
+  jobs AnalysisJob[]
+}
+
+model Membership {
+  id String @id @default(cuid())
+  userId String
+  workspaceId String
+  role Role @default(MEMBER)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([userId, workspaceId])
+}
+
+model Repository {
+  id String @id @default(cuid())
+  workspaceId String
+  ownerId String
+  externalId String
+  name String
+  fullName String
+  defaultBranch String @default("main")
+  language String?
+  private Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner User @relation(fields: [ownerId], references: [id])
+  analyses RepositoryAnalysis[]
+  files File[]
+  dependencies Dependency[]
+  pullRequests PullRequest[]
+  commits Commit[]
+  @@unique([workspaceId, externalId])
+  @@index([workspaceId])
+}
+
+model RepositoryAnalysis {
+  id String @id @default(cuid())
+  repositoryId String
+  workspaceId String
+  healthScore Int
+  codeQuality Int
+  security Int
+  maintainability Int
+  architecture Int
+  dependencies Int
+  activity Int
+  summary String
+  createdAt DateTime @default(now())
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  findings Finding[]
+  insights AIInsight[]
+  @@index([repositoryId, createdAt])
+}
+
+model File {
+  id String @id @default(cuid())
+  repositoryId String
+  path String
+  language String?
+  loc Int @default(0)
+  complexity Int @default(0)
+  riskScore Int @default(0)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  @@unique([repositoryId, path])
+}
+
+model Finding {
+  id String @id @default(cuid())
+  analysisId String
+  severity Severity
+  confidence Float
+  category String
+  file String?
+  line Int?
+  title String
+  description String
+  evidence String?
+  recommendation String
+  analysis RepositoryAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  @@index([analysisId, severity])
+}
+
+model Dependency {
+  id String @id @default(cuid())
+  repositoryId String
+  name String
+  version String
+  latestVersion String?
+  riskStatus String @default("UNKNOWN")
+  outdated Boolean @default(false)
+  license String?
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+}
+
+model PullRequest {
+  id String @id @default(cuid())
+  repositoryId String
+  number Int
+  title String
+  additions Int @default(0)
+  deletions Int @default(0)
+  riskScore Int @default(0)
+  mergeReadiness Int @default(0)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  @@unique([repositoryId, number])
+}
+
+model Commit {
+  id String @id @default(cuid())
+  repositoryId String
+  sha String
+  message String
+  author String
+  createdAt DateTime
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+}
+
+model AnalysisJob {
+  id String @id @default(cuid())
+  workspaceId String
+  repositoryId String?
+  type String
+  status JobStatus @default(QUEUED)
+  attempts Int @default(0)
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AIInsight {
+  id String @id @default(cuid())
+  analysisId String
+  title String
+  category String
+  severity Severity
+  confidence Float
+  file String?
+  line Int?
+  explanation String
+  recommendation String
+  estimatedEffort String?
+  analysis RepositoryAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id String @id @default(cuid())
+  workspaceId String
+  title String
+  body String
+  read Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+  userId String?
+  workspaceId String?
+  action String
+  resourceType String
+  resourceId String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([workspaceId, createdAt])
+}
+
+model APIKey {
+  id String @id @default(cuid())
+  workspaceId String
+  name String
+  prefix String
+  hash String
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+}
