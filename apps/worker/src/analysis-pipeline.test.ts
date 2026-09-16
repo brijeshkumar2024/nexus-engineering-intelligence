@@ -72,4 +72,47 @@ describe('Analysis Pipeline', () => {
 
     expect(result.summary.averageFunctionComplexity).toBeGreaterThan(0);
   });
+
+  it('should integrate dependency intelligence into repository analysis', async () => {
+    const repositoryPath = path.resolve(
+      process.cwd(),
+      '../../demo-repository',
+    );
+
+    const result = await analyzeRepository(repositoryPath);
+
+    expect(result.dependencies).toBeDefined();
+
+    expect(
+      result.dependencies.metrics.totalDependencies,
+    ).toBeGreaterThan(0);
+
+    expect(
+      result.dependencies.dependencies.length,
+    ).toBeGreaterThan(0);
+
+    const packageJsonDependency =
+      result.dependencies.dependencies.find(
+        (dependency) =>
+          dependency.manifest === 'package.json',
+      );
+
+    expect(packageJsonDependency).toBeDefined();
+
+    expect(packageJsonDependency?.name).toBeTruthy();
+    expect(packageJsonDependency?.version).toBeTruthy();
+
+    expect(
+      result.dependencies.metrics.runtimeDependencies +
+        result.dependencies.metrics.developmentDependencies,
+    ).toBe(
+      result.dependencies.metrics.totalDependencies,
+    );
+
+    expect(
+      result.dependencies.findings.every(
+        (finding) => finding.heuristic === true,
+      ),
+    ).toBe(true);
+  });
 });

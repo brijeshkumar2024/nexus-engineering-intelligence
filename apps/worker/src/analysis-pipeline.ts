@@ -1,21 +1,31 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
+
 import {
   scanRepository,
   type RepositoryScanResult,
 } from './repository-scanner';
+
 import {
   analyzeCodeQuality,
   type QualityAnalysisResult,
 } from './code-quality-analyzer';
+
 import {
   analyzeTypeScriptAST,
   type ASTAnalysisResult,
 } from './ast-analyzer';
+
 import {
   analyzeSecurity,
   type SecurityAnalysisResult,
 } from './security-analyzer';
+
+import {
+  analyzeDependencies,
+  type DependencyAnalysisResult,
+  type DependencyManifest,
+} from './dependency-analyzer';
 
 export interface FileAnalysisResult {
   filePath: string;
@@ -31,20 +41,38 @@ export interface RepositoryAnalysisResult {
   repositoryPath: string;
   scan: RepositoryScanResult;
   files: FileAnalysisResult[];
+  dependencies: DependencyAnalysisResult;
   summary: {
     filesAnalyzed: number;
     typeScriptFiles: number;
     totalFindings: number;
+
     securityFindings: number;
     criticalSecurityFindings: number;
     highSecurityFindings: number;
     mediumSecurityFindings: number;
     lowSecurityFindings: number;
+
     functions: number;
     classes: number;
     imports: number;
     exports: number;
     averageFunctionComplexity: number;
+  };
+}
+
+function createEmptyDependencyAnalysis(): DependencyAnalysisResult {
+  return {
+    dependencies: [],
+    findings: [],
+    metrics: {
+      totalDependencies: 0,
+      runtimeDependencies: 0,
+      developmentDependencies: 0,
+      unpinnedDependencies: 0,
+      suspiciousDependencies: 0,
+      unknownLicenses: 0,
+    },
   };
 }
 
@@ -66,7 +94,10 @@ export async function analyzeRepository(
     );
 
     try {
-      const content = await readFile(absoluteFilePath, 'utf8');
+      const content = await readFile(
+        absoluteFilePath,
+        'utf8',
+      );
 
       const quality = analyzeCodeQuality(
         file.path,
@@ -82,7 +113,10 @@ export async function analyzeRepository(
       let ast: ASTAnalysisResult | undefined;
 
       if (file.language === 'typescript') {
-        ast = analyzeTypeScriptAST(file.path, content);
+        ast = analyzeTypeScriptAST(
+          file.path,
+          content,
+        );
       }
 
       files.push({
@@ -95,7 +129,94 @@ export async function analyzeRepository(
         ast,
       });
     } catch {
-      // A single unreadable file must not fail the complete repository analysis.
+      // A single unreadable file must not fail
+      // the complete repository analysis.
+    }
+  }
+
+  // Phase 3: Dependency Intelligence.
+  //
+  // Supported manifests:
+  // - package.json
+  // - requirements.txt
+  // - pom.xml
+  //
+  // Dependency analysis is intentionally kept separate
+  // from source-file analysis because manifests have
+  // different structures and semantics.
+  let dependencies = createEmptyDependencyAnalysis();
+
+  const dependencyManifests: DependencyManifest[] = [
+    'package.json',
+    'requirements.txt',
+    'pom.xml',
+  ];
+
+  for (const manifest of dependencyManifests) {
+    const manifestFile = scan.files.find(
+      (file) => path.basename(file.path) === manifest,
+    );
+
+    if (!manifestFile) {
+      continue;
+    }
+
+    try {
+      const manifestPath = path.join(
+        absoluteRepositoryPath,
+        manifestFile.path,
+      );
+
+      const content = await readFile(
+        manifestPath,
+        'utf8',
+      );
+
+      const result = analyzeDependencies(
+        content,
+        manifest,
+      );
+
+      dependencies = {
+        dependencies: [
+          ...dependencies.dependencies,
+          ...result.dependencies,
+        ],
+
+        findings: [
+          ...dependencies.findings,
+          ...result.findings,
+        ],
+
+        metrics: {
+          totalDependencies:
+            dependencies.metrics.totalDependencies +
+            result.metrics.totalDependencies,
+
+          runtimeDependencies:
+            dependencies.metrics.runtimeDependencies +
+            result.metrics.runtimeDependencies,
+
+          developmentDependencies:
+            dependencies.metrics.developmentDependencies +
+            result.metrics.developmentDependencies,
+
+          unpinnedDependencies:
+            dependencies.metrics.unpinnedDependencies +
+            result.metrics.unpinnedDependencies,
+
+          suspiciousDependencies:
+            dependencies.metrics.suspiciousDependencies +
+            result.metrics.suspiciousDependencies,
+
+          unknownLicenses:
+            dependencies.metrics.unknownLicenses +
+            result.metrics.unknownLicenses,
+        },
+      };
+    } catch {
+      // A malformed or unreadable dependency manifest
+      // must not fail the complete repository analysis.
     }
   }
 
@@ -104,60 +225,74 @@ export async function analyzeRepository(
   );
 
   const totalFindings = files.reduce(
-    (total, file) => total + file.quality.metrics.totalFindings,
+    (total, file) =>
+      total + file.quality.metrics.totalFindings,
     0,
   );
 
   const securityFindings = files.reduce(
-    (total, file) => total + file.security.metrics.totalFindings,
+    (total, file) =>
+      total + file.security.metrics.totalFindings,
     0,
   );
 
   const criticalSecurityFindings = files.reduce(
-    (total, file) => total + file.security.metrics.critical,
+    (total, file) =>
+      total + file.security.metrics.critical,
     0,
   );
 
   const highSecurityFindings = files.reduce(
-    (total, file) => total + file.security.metrics.high,
+    (total, file) =>
+      total + file.security.metrics.high,
     0,
   );
 
   const mediumSecurityFindings = files.reduce(
-    (total, file) => total + file.security.metrics.medium,
+    (total, file) =>
+      total + file.security.metrics.medium,
     0,
   );
 
   const lowSecurityFindings = files.reduce(
-    (total, file) => total + file.security.metrics.low,
+    (total, file) =>
+      total + file.security.metrics.low,
     0,
   );
 
   const functions = typeScriptFiles.reduce(
-    (total, file) => total + (file.ast?.metrics.functionCount ?? 0),
+    (total, file) =>
+      total + (file.ast?.metrics.functionCount ?? 0),
     0,
   );
 
   const classes = typeScriptFiles.reduce(
-    (total, file) => total + (file.ast?.metrics.classCount ?? 0),
+    (total, file) =>
+      total + (file.ast?.metrics.classCount ?? 0),
     0,
   );
 
   const imports = typeScriptFiles.reduce(
-    (total, file) => total + (file.ast?.metrics.importCount ?? 0),
+    (total, file) =>
+      total + (file.ast?.metrics.importCount ?? 0),
     0,
   );
 
   const exports = typeScriptFiles.reduce(
-    (total, file) => total + (file.ast?.metrics.exportCount ?? 0),
+    (total, file) =>
+      total + (file.ast?.metrics.exportCount ?? 0),
     0,
   );
 
   const complexityValues = typeScriptFiles
-    .map((file) => file.ast?.metrics.averageFunctionComplexity)
+    .map(
+      (file) =>
+        file.ast?.metrics.averageFunctionComplexity,
+    )
     .filter(
       (value): value is number =>
-        typeof value === 'number' && value > 0,
+        typeof value === 'number' &&
+        value > 0,
     );
 
   const averageFunctionComplexity =
@@ -176,20 +311,36 @@ export async function analyzeRepository(
     repositoryPath: absoluteRepositoryPath,
     scan,
     files,
+    dependencies,
+
     summary: {
       filesAnalyzed: files.length,
-      typeScriptFiles: typeScriptFiles.length,
+
+      typeScriptFiles:
+        typeScriptFiles.length,
+
       totalFindings:
-        totalFindings + securityFindings,
+        totalFindings +
+        securityFindings,
+
       securityFindings,
+
       criticalSecurityFindings,
+
       highSecurityFindings,
+
       mediumSecurityFindings,
+
       lowSecurityFindings,
+
       functions,
+
       classes,
+
       imports,
+
       exports,
+
       averageFunctionComplexity,
     },
   };
