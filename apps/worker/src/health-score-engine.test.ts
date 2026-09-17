@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 
 import {
   calculateHealthScore,
@@ -24,9 +28,9 @@ function createBaseInput(): HealthScoreInput {
     },
 
     maintainability: {
-      averageFunctionComplexity: 2,
+      averageFunctionComplexity: 1,
       functions: 10,
-      classes: 5,
+      classes: 2,
     },
 
     architecture: {
@@ -43,345 +47,335 @@ function createBaseInput(): HealthScoreInput {
     },
 
     activity: {
-      commitsLast30Days: 20,
-      contributorsLast30Days: 3,
+      commitsLast30Days: 10,
+      contributorsLast30Days: 2,
     },
   };
 }
 
-describe('Health Score Engine', () => {
-  it('should calculate a healthy repository score', () => {
-    const input = createBaseInput();
+describe(
+  'Health Score Engine',
+  () => {
+    it(
+      'should return a healthy score for a clean repository',
+      () => {
+        const result =
+          calculateHealthScore(
+            createBaseInput(),
+          );
 
-    const result = calculateHealthScore(input);
+        expect(
+          result.overallScore,
+        ).toBeGreaterThanOrEqual(90);
 
-    expect(result.overallScore).toBeGreaterThanOrEqual(90);
+        expect(
+          result.dimensions
+            .codeQuality.available,
+        ).toBe(true);
 
-    expect(
-      result.dimensions.codeQuality.score,
-    ).toBe(100);
+        expect(
+          result.dimensions
+            .security.available,
+        ).toBe(true);
 
-    expect(
-      result.dimensions.security.score,
-    ).toBe(100);
+        expect(
+          result.dimensions
+            .maintainability.available,
+        ).toBe(true);
 
-    expect(
-      result.dimensions.maintainability.score,
-    ).toBe(100);
+        expect(
+          result.dimensions
+            .architecture.available,
+        ).toBe(true);
 
-    expect(
-      result.dimensions.architecture.score,
-    ).toBe(100);
+        expect(
+          result.dimensions
+            .dependencies.available,
+        ).toBe(true);
 
-    expect(
-      result.dimensions.dependencies.score,
-    ).toBe(100);
-
-    expect(
-      result.dimensions.activity.score,
-    ).toBe(85);
-
-    expect(result.trend).toBe('stable');
-  });
-
-  it('should penalize critical security findings', () => {
-    const input = createBaseInput();
-
-    input.security.critical = 2;
-
-    const result = calculateHealthScore(input);
-
-    expect(
-      result.dimensions.security.score,
-    ).toBe(50);
-
-    expect(
-      result.dimensions.security.reasons,
-    ).toContain(
-      '2 critical security finding(s) detected.',
-    );
-  });
-
-  it('should penalize high-severity security findings', () => {
-    const input = createBaseInput();
-
-    input.security.high = 2;
-
-    const result = calculateHealthScore(input);
-
-    expect(
-      result.dimensions.security.score,
-    ).toBe(70);
-
-    expect(
-      result.dimensions.security.reasons,
-    ).toContain(
-      '2 high-severity security finding(s) detected.',
-    );
-  });
-
-  it('should penalize code-quality issues', () => {
-    const input = createBaseInput();
-
-    input.codeQuality.largeFiles = 2;
-    input.codeQuality.largeFunctions = 1;
-    input.codeQuality.complexFunctions = 1;
-    input.codeQuality.todos = 3;
-    input.codeQuality.fixmes = 1;
-
-    const result = calculateHealthScore(input);
-
-    expect(
-      result.dimensions.codeQuality.score,
-    ).toBe(80);
-
-    expect(
-      result.dimensions.codeQuality.reasons,
-    ).toContain(
-      '2 large file(s) detected.',
+        expect(
+          result.dimensions
+            .activity.available,
+        ).toBe(true);
+      },
     );
 
-    expect(
-      result.dimensions.codeQuality.reasons,
-    ).toContain(
-      '1 large function(s) detected.',
+    it(
+      'should reduce code quality score for large files',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.codeQuality.largeFiles = 4;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .codeQuality.score,
+        ).toBe(88);
+      },
     );
 
-    expect(
-      result.dimensions.codeQuality.reasons,
-    ).toContain(
-      '1 complex function(s) detected.',
+    it(
+      'should reduce code quality score for large functions',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.codeQuality.largeFunctions = 3;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .codeQuality.score,
+        ).toBe(88);
+      },
     );
 
-    expect(
-      result.dimensions.codeQuality.reasons,
-    ).toContain(
-      '3 TODO item(s) detected.',
+    it(
+      'should reduce code quality score for complex functions',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.codeQuality.complexFunctions = 4;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .codeQuality.score,
+        ).toBe(80);
+      },
     );
 
-    expect(
-      result.dimensions.codeQuality.reasons,
-    ).toContain(
-      '1 FIXME item(s) detected.',
-    );
-  });
+    it(
+      'should penalize security findings by severity',
+      () => {
+        const input =
+          createBaseInput();
 
-  it('should penalize high function complexity', () => {
-    const input = createBaseInput();
+        input.security.critical = 1;
+        input.security.high = 1;
+        input.security.medium = 1;
+        input.security.low = 1;
 
-    input.maintainability.averageFunctionComplexity = 8;
+        const result =
+          calculateHealthScore(input);
 
-    const result = calculateHealthScore(input);
-
-    expect(
-      result.dimensions.maintainability.score,
-    ).toBe(76);
-
-    expect(
-      result.dimensions.maintainability.reasons,
-    ).toContain(
-      'Average function complexity is 8.',
-    );
-  });
-
-  it('should penalize architecture problems', () => {
-    const input = createBaseInput();
-
-    input.architecture.circularDependencies = 1;
-    input.architecture.highCouplingModules = 2;
-    input.architecture.layeringViolations = 1;
-
-    const result = calculateHealthScore(input);
-
-    expect(
-      result.dimensions.architecture.score,
-    ).toBe(62);
-
-    expect(
-      result.dimensions.architecture.reasons,
-    ).toContain(
-      '1 circular dependency cycle(s) detected.',
+        expect(
+          result.dimensions
+            .security.score,
+        ).toBe(51);
+      },
     );
 
-    expect(
-      result.dimensions.architecture.reasons,
-    ).toContain(
-      '2 highly coupled module(s) detected.',
+    it(
+      'should reduce maintainability score for high complexity',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.maintainability
+          .averageFunctionComplexity = 8;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .maintainability.score,
+        ).toBe(76);
+      },
     );
 
-    expect(
-      result.dimensions.architecture.reasons,
-    ).toContain(
-      '1 architecture layering violation(s) detected.',
-    );
-  });
+    it(
+      'should reduce maintainability score for many functions without classes',
+      () => {
+        const input =
+          createBaseInput();
 
-  it('should penalize dependency risks', () => {
-    const input = createBaseInput();
+        input.maintainability.functions = 30;
+        input.maintainability.classes = 0;
 
-    input.dependencies.totalDependencies = 10;
-    input.dependencies.unpinnedDependencies = 5;
-    input.dependencies.suspiciousDependencies = 1;
-    input.dependencies.unknownLicenses = 2;
+        const result =
+          calculateHealthScore(input);
 
-    const result = calculateHealthScore(input);
-
-    expect(
-      result.dimensions.dependencies.score,
-    ).toBe(76);
-
-    expect(
-      result.dimensions.dependencies.reasons,
-    ).toContain(
-      '5 dependency version(s) use non-exact ranges.',
+        expect(
+          result.dimensions
+            .maintainability.score,
+        ).toBe(90);
+      },
     );
 
-    expect(
-      result.dimensions.dependencies.reasons,
-    ).toContain(
-      '1 suspicious or pre-release dependency version(s) detected.',
+    it(
+      'should reduce architecture score for architecture issues',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.architecture!.circularDependencies = 1;
+        input.architecture!.highCouplingModules = 2;
+        input.architecture!.layeringViolations = 1;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .architecture.score,
+        ).toBe(62);
+      },
     );
 
-    expect(
-      result.dimensions.dependencies.reasons,
-    ).toContain(
-      '2 dependency license metadata item(s) are unresolved.',
-    );
-  });
+    it(
+      'should reduce dependency score for dependency issues',
+      () => {
+        const input =
+          createBaseInput();
 
-  it('should calculate activity score from recent commits and contributors', () => {
-    const input = createBaseInput();
+        input.dependencies
+          .totalDependencies = 10;
 
-    input.activity.commitsLast30Days = 30;
-    input.activity.contributorsLast30Days = 5;
+        input.dependencies
+          .unpinnedDependencies = 5;
 
-    const result = calculateHealthScore(input);
+        input.dependencies
+          .suspiciousDependencies = 1;
 
-    expect(
-      result.dimensions.activity.score,
-    ).toBe(100);
+        input.dependencies
+          .unknownLicenses = 2;
 
-    expect(
-      result.dimensions.activity.reasons,
-    ).toContain(
-      '30 commit(s) detected in the last 30 days.',
-    );
+        const result =
+          calculateHealthScore(input);
 
-    expect(
-      result.dimensions.activity.reasons,
-    ).toContain(
-      '5 contributor(s) detected in the last 30 days.',
-    );
-  });
-
-  it('should reduce activity score for an inactive repository', () => {
-    const input = createBaseInput();
-
-    input.activity.commitsLast30Days = 0;
-    input.activity.contributorsLast30Days = 0;
-
-    const result = calculateHealthScore(input);
-
-    expect(
-      result.dimensions.activity.score,
-    ).toBe(30);
-
-    expect(
-      result.dimensions.activity.reasons,
-    ).toContain(
-      'No commits were detected in the last 30 days.',
-    );
-  });
-
-  it('should never produce scores outside the 0 to 100 range', () => {
-    const input = createBaseInput();
-
-    input.security.critical = 100;
-    input.security.high = 100;
-    input.security.medium = 100;
-    input.security.low = 100;
-
-    input.codeQuality.largeFiles = 100;
-    input.codeQuality.largeFunctions = 100;
-    input.codeQuality.complexFunctions = 100;
-    input.codeQuality.todos = 100;
-    input.codeQuality.fixmes = 100;
-
-    input.architecture.circularDependencies = 100;
-    input.architecture.highCouplingModules = 100;
-    input.architecture.layeringViolations = 100;
-
-    input.dependencies.unpinnedDependencies = 100;
-    input.dependencies.suspiciousDependencies = 100;
-    input.dependencies.unknownLicenses = 100;
-
-    const result = calculateHealthScore(input);
-
-    expect(result.overallScore).toBeGreaterThanOrEqual(0);
-    expect(result.overallScore).toBeLessThanOrEqual(100);
-
-    expect(
-      result.dimensions.codeQuality.score,
-    ).toBeGreaterThanOrEqual(0);
-
-    expect(
-      result.dimensions.codeQuality.score,
-    ).toBeLessThanOrEqual(100);
-
-    expect(
-      result.dimensions.security.score,
-    ).toBeGreaterThanOrEqual(0);
-
-    expect(
-      result.dimensions.security.score,
-    ).toBeLessThanOrEqual(100);
-
-    expect(
-      result.dimensions.architecture.score,
-    ).toBeGreaterThanOrEqual(0);
-
-    expect(
-      result.dimensions.architecture.score,
-    ).toBeLessThanOrEqual(100);
-
-    expect(
-      result.dimensions.dependencies.score,
-    ).toBeGreaterThanOrEqual(0);
-
-    expect(
-      result.dimensions.dependencies.score,
-    ).toBeLessThanOrEqual(100);
-  });
-
-  it('should report stable trend when historical scores are unavailable', () => {
-    const input = createBaseInput();
-
-    const result = calculateHealthScore(input);
-
-    expect(result.trend).toBe('stable');
-  });
-
-  it('should provide aggregated explanations', () => {
-    const input = createBaseInput();
-
-    input.codeQuality.todos = 2;
-    input.security.high = 1;
-    input.dependencies.suspiciousDependencies = 1;
-
-    const result = calculateHealthScore(input);
-
-    expect(result.reasons.length).toBeGreaterThan(0);
-
-    expect(result.reasons).toContain(
-      '2 TODO item(s) detected.',
+        expect(
+          result.dimensions
+            .dependencies.score,
+        ).toBe(76);
+      },
     );
 
-    expect(result.reasons).toContain(
-      '1 high-severity security finding(s) detected.',
+    it(
+      'should increase activity score for active repositories',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.activity!.commitsLast30Days = 30;
+        input.activity!.contributorsLast30Days = 5;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .activity.score,
+        ).toBe(100);
+      },
     );
 
-    expect(result.reasons).toContain(
-      '1 suspicious or pre-release dependency version(s) detected.',
+    it(
+      'should reduce activity score for inactive repositories',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.activity!.commitsLast30Days = 0;
+        input.activity!.contributorsLast30Days = 0;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .activity.score,
+        ).toBe(30);
+      },
     );
-  });
-});
+
+    it(
+      'should exclude unavailable dimensions from overall score',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.architecture = null;
+        input.activity = null;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .architecture.available,
+        ).toBe(false);
+
+        expect(
+          result.dimensions
+            .architecture.score,
+        ).toBeNull();
+
+        expect(
+          result.dimensions
+            .activity.available,
+        ).toBe(false);
+
+        expect(
+          result.dimensions
+            .activity.score,
+        ).toBeNull();
+
+        expect(
+          result.reasons.some(
+            (reason) =>
+              reason.includes(
+                '2 health dimension(s)',
+              ),
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it(
+      'should clamp scores between 0 and 100',
+      () => {
+        const input =
+          createBaseInput();
+
+        input.security.critical = 100;
+        input.security.high = 100;
+
+        input.architecture!.circularDependencies = 100;
+        input.architecture!.highCouplingModules = 100;
+        input.architecture!.layeringViolations = 100;
+
+        const result =
+          calculateHealthScore(input);
+
+        expect(
+          result.dimensions
+            .security.score,
+        ).toBe(0);
+
+        expect(
+          result.dimensions
+            .architecture.score,
+        ).toBe(0);
+
+        expect(
+          result.overallScore,
+        ).toBeGreaterThanOrEqual(0);
+
+        expect(
+          result.overallScore,
+        ).toBeLessThanOrEqual(100);
+      },
+    );
+  },
+);

@@ -27,6 +27,11 @@ import {
   type DependencyManifest,
 } from './dependency-analyzer';
 
+import {
+  calculateHealthScore,
+  type HealthScoreResult,
+} from './health-score-engine';
+
 export interface FileAnalysisResult {
   filePath: string;
   language: string;
@@ -42,6 +47,8 @@ export interface RepositoryAnalysisResult {
   scan: RepositoryScanResult;
   files: FileAnalysisResult[];
   dependencies: DependencyAnalysisResult;
+  healthScore: HealthScoreResult;
+
   summary: {
     filesAnalyzed: number;
     typeScriptFiles: number;
@@ -79,10 +86,14 @@ function createEmptyDependencyAnalysis(): DependencyAnalysisResult {
 export async function analyzeRepository(
   repositoryPath: string,
 ): Promise<RepositoryAnalysisResult> {
-  const absoluteRepositoryPath = path.resolve(repositoryPath);
+  const absoluteRepositoryPath = path.resolve(
+    repositoryPath,
+  );
 
   // Phase 1: discover repository files and metadata.
-  const scan = await scanRepository(absoluteRepositoryPath);
+  const scan = await scanRepository(
+    absoluteRepositoryPath,
+  );
 
   const files: FileAnalysisResult[] = [];
 
@@ -144,7 +155,8 @@ export async function analyzeRepository(
   // Dependency analysis is intentionally kept separate
   // from source-file analysis because manifests have
   // different structures and semantics.
-  let dependencies = createEmptyDependencyAnalysis();
+  let dependencies =
+    createEmptyDependencyAnalysis();
 
   const dependencyManifests: DependencyManifest[] = [
     'package.json',
@@ -154,7 +166,8 @@ export async function analyzeRepository(
 
   for (const manifest of dependencyManifests) {
     const manifestFile = scan.files.find(
-      (file) => path.basename(file.path) === manifest,
+      (file) =>
+        path.basename(file.path) === manifest,
     );
 
     if (!manifestFile) {
@@ -220,101 +233,220 @@ export async function analyzeRepository(
     }
   }
 
+  // Phase 4: aggregate source-analysis metrics.
   const typeScriptFiles = files.filter(
-    (file) => file.language === 'typescript',
+    (file) =>
+      file.language === 'typescript',
   );
 
   const totalFindings = files.reduce(
     (total, file) =>
-      total + file.quality.metrics.totalFindings,
+      total +
+      file.quality.metrics.totalFindings,
     0,
   );
 
   const securityFindings = files.reduce(
     (total, file) =>
-      total + file.security.metrics.totalFindings,
+      total +
+      file.security.metrics.totalFindings,
     0,
   );
 
-  const criticalSecurityFindings = files.reduce(
-    (total, file) =>
-      total + file.security.metrics.critical,
-    0,
-  );
+  const criticalSecurityFindings =
+    files.reduce(
+      (total, file) =>
+        total +
+        file.security.metrics.critical,
+      0,
+    );
 
-  const highSecurityFindings = files.reduce(
-    (total, file) =>
-      total + file.security.metrics.high,
-    0,
-  );
+  const highSecurityFindings =
+    files.reduce(
+      (total, file) =>
+        total +
+        file.security.metrics.high,
+      0,
+    );
 
-  const mediumSecurityFindings = files.reduce(
-    (total, file) =>
-      total + file.security.metrics.medium,
-    0,
-  );
+  const mediumSecurityFindings =
+    files.reduce(
+      (total, file) =>
+        total +
+        file.security.metrics.medium,
+      0,
+    );
 
-  const lowSecurityFindings = files.reduce(
-    (total, file) =>
-      total + file.security.metrics.low,
-    0,
-  );
+  const lowSecurityFindings =
+    files.reduce(
+      (total, file) =>
+        total +
+        file.security.metrics.low,
+      0,
+    );
 
   const functions = typeScriptFiles.reduce(
     (total, file) =>
-      total + (file.ast?.metrics.functionCount ?? 0),
+      total +
+      (file.ast?.metrics.functionCount ?? 0),
     0,
   );
 
   const classes = typeScriptFiles.reduce(
     (total, file) =>
-      total + (file.ast?.metrics.classCount ?? 0),
+      total +
+      (file.ast?.metrics.classCount ?? 0),
     0,
   );
 
   const imports = typeScriptFiles.reduce(
     (total, file) =>
-      total + (file.ast?.metrics.importCount ?? 0),
+      total +
+      (file.ast?.metrics.importCount ?? 0),
     0,
   );
 
   const exports = typeScriptFiles.reduce(
     (total, file) =>
-      total + (file.ast?.metrics.exportCount ?? 0),
+      total +
+      (file.ast?.metrics.exportCount ?? 0),
     0,
   );
 
-  const complexityValues = typeScriptFiles
-    .map(
-      (file) =>
-        file.ast?.metrics.averageFunctionComplexity,
-    )
-    .filter(
-      (value): value is number =>
-        typeof value === 'number' &&
-        value > 0,
-    );
+  const complexityValues =
+    typeScriptFiles
+      .map(
+        (file) =>
+          file.ast?.metrics
+            .averageFunctionComplexity,
+      )
+      .filter(
+        (value): value is number =>
+          typeof value === 'number' &&
+          value > 0,
+      );
 
   const averageFunctionComplexity =
     complexityValues.length > 0
       ? Number(
           (
             complexityValues.reduce(
-              (sum, value) => sum + value,
+              (sum, value) =>
+                sum + value,
               0,
-            ) / complexityValues.length
+            ) /
+            complexityValues.length
           ).toFixed(2),
         )
       : 0;
 
+  // Phase 5: Health Score.
+  //
+  // Only currently implemented analysis
+  // dimensions are supplied with real data.
+  //
+  // Architecture and activity are explicitly
+  // unavailable until their analyzers exist.
+  const healthScore =
+    calculateHealthScore({
+      codeQuality: {
+        totalFindings:
+          totalFindings,
+        largeFiles:
+          files.reduce(
+            (total, file) =>
+              total +
+              file.quality.metrics
+                .largeFiles,
+            0,
+          ),
+        largeFunctions:
+          files.reduce(
+            (total, file) =>
+              total +
+              file.quality.metrics
+                .largeFunctions,
+            0,
+          ),
+        complexFunctions:
+          files.reduce(
+            (total, file) =>
+              total +
+              file.quality.metrics
+                .complexFunctions,
+            0,
+          ),
+        todos:
+          files.reduce(
+            (total, file) =>
+              total +
+              file.quality.metrics.todos,
+            0,
+          ),
+        fixmes:
+          files.reduce(
+            (total, file) =>
+              total +
+              file.quality.metrics.fixmes,
+            0,
+          ),
+      },
+
+      security: {
+        critical:
+          criticalSecurityFindings,
+        high:
+          highSecurityFindings,
+        medium:
+          mediumSecurityFindings,
+        low:
+          lowSecurityFindings,
+      },
+
+      maintainability: {
+        averageFunctionComplexity,
+        functions,
+        classes,
+      },
+
+      architecture: null,
+
+      dependencies: {
+        totalDependencies:
+          dependencies.metrics
+            .totalDependencies,
+
+        unpinnedDependencies:
+          dependencies.metrics
+            .unpinnedDependencies,
+
+        suspiciousDependencies:
+          dependencies.metrics
+            .suspiciousDependencies,
+
+        unknownLicenses:
+          dependencies.metrics
+            .unknownLicenses,
+      },
+
+      activity: null,
+    });
+
   return {
-    repositoryPath: absoluteRepositoryPath,
+    repositoryPath:
+      absoluteRepositoryPath,
+
     scan,
+
     files,
+
     dependencies,
 
+    healthScore,
+
     summary: {
-      filesAnalyzed: files.length,
+      filesAnalyzed:
+        files.length,
 
       typeScriptFiles:
         typeScriptFiles.length,

@@ -115,4 +115,64 @@ describe('Analysis Pipeline', () => {
       ),
     ).toBe(true);
   });
+
+  it('should integrate health score into repository analysis', async () => {
+    const repositoryPath = path.resolve(
+      process.cwd(),
+      '../../demo-repository',
+    );
+
+    const result = await analyzeRepository(repositoryPath);
+
+    expect(result.healthScore).toBeDefined();
+
+    expect(
+      result.healthScore.overallScore,
+    ).toBeGreaterThanOrEqual(0);
+
+    expect(
+      result.healthScore.overallScore,
+    ).toBeLessThanOrEqual(100);
+
+    expect(
+      result.healthScore.dimensions.codeQuality.available,
+    ).toBe(true);
+
+    expect(
+      result.healthScore.dimensions.security.available,
+    ).toBe(true);
+
+    expect(
+      result.healthScore.dimensions.maintainability.available,
+    ).toBe(true);
+
+    expect(
+      result.healthScore.dimensions.dependencies.available,
+    ).toBe(true);
+
+    expect(
+      result.healthScore.dimensions.architecture.available,
+    ).toBe(false);
+
+    expect(
+      result.healthScore.dimensions.architecture.score,
+    ).toBeNull();
+
+    expect(
+      result.healthScore.dimensions.activity.available,
+    ).toBe(false);
+
+    expect(
+      result.healthScore.dimensions.activity.score,
+    ).toBeNull();
+
+    expect(
+      result.healthScore.reasons.some(
+        (reason) =>
+          reason.includes(
+            'health dimension(s) are not yet available',
+          ),
+      ),
+    ).toBe(true);
+  });
 });

@@ -21,11 +21,13 @@ export interface HealthScoreInput {
     classes: number;
   };
 
-  architecture: {
-    circularDependencies: number;
-    highCouplingModules: number;
-    layeringViolations: number;
-  };
+  architecture:
+    | {
+        circularDependencies: number;
+        highCouplingModules: number;
+        layeringViolations: number;
+      }
+    | null;
 
   dependencies: {
     totalDependencies: number;
@@ -34,14 +36,17 @@ export interface HealthScoreInput {
     unknownLicenses: number;
   };
 
-  activity: {
-    commitsLast30Days: number;
-    contributorsLast30Days: number;
-  };
+  activity:
+    | {
+        commitsLast30Days: number;
+        contributorsLast30Days: number;
+      }
+    | null;
 }
 
 export interface HealthDimensionScore {
-  score: number;
+  score: number | null;
+  available: boolean;
   reasons: string[];
 }
 
@@ -62,15 +67,45 @@ export interface HealthScoreResult {
   reasons: string[];
 }
 
+type ArchitectureInput = {
+  circularDependencies: number;
+  highCouplingModules: number;
+  layeringViolations: number;
+};
+
+type ActivityInput = {
+  commitsLast30Days: number;
+  contributorsLast30Days: number;
+};
+
 function clampScore(score: number): number {
-  return Math.max(0, Math.min(100, Math.round(score)));
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(score),
+    ),
+  );
 }
 
 function addPenalty(
   score: number,
   penalty: number,
 ): number {
-  return Math.max(0, score - penalty);
+  return Math.max(
+    0,
+    score - penalty,
+  );
+}
+
+function unavailableDimension(
+  reason: string,
+): HealthDimensionScore {
+  return {
+    score: null,
+    available: false,
+    reasons: [reason],
+  };
 }
 
 function calculateCodeQualityScore(
@@ -79,11 +114,30 @@ function calculateCodeQualityScore(
   let score = 100;
   const reasons: string[] = [];
 
-  score = addPenalty(score, input.largeFiles * 3);
-  score = addPenalty(score, input.largeFunctions * 4);
-  score = addPenalty(score, input.complexFunctions * 5);
-  score = addPenalty(score, input.todos);
-  score = addPenalty(score, input.fixmes * 2);
+  score = addPenalty(
+    score,
+    input.largeFiles * 3,
+  );
+
+  score = addPenalty(
+    score,
+    input.largeFunctions * 4,
+  );
+
+  score = addPenalty(
+    score,
+    input.complexFunctions * 5,
+  );
+
+  score = addPenalty(
+    score,
+    input.todos,
+  );
+
+  score = addPenalty(
+    score,
+    input.fixmes * 2,
+  );
 
   if (input.largeFiles > 0) {
     reasons.push(
@@ -123,6 +177,7 @@ function calculateCodeQualityScore(
 
   return {
     score: clampScore(score),
+    available: true,
     reasons,
   };
 }
@@ -133,10 +188,25 @@ function calculateSecurityScore(
   let score = 100;
   const reasons: string[] = [];
 
-  score = addPenalty(score, input.critical * 25);
-  score = addPenalty(score, input.high * 15);
-  score = addPenalty(score, input.medium * 7);
-  score = addPenalty(score, input.low * 2);
+  score = addPenalty(
+    score,
+    input.critical * 25,
+  );
+
+  score = addPenalty(
+    score,
+    input.high * 15,
+  );
+
+  score = addPenalty(
+    score,
+    input.medium * 7,
+  );
+
+  score = addPenalty(
+    score,
+    input.low * 2,
+  );
 
   if (input.critical > 0) {
     reasons.push(
@@ -170,6 +240,7 @@ function calculateSecurityScore(
 
   return {
     score: clampScore(score),
+    available: true,
     reasons,
   };
 }
@@ -180,7 +251,9 @@ function calculateMaintainabilityScore(
   let score = 100;
   const reasons: string[] = [];
 
-  if (input.averageFunctionComplexity > 5) {
+  if (
+    input.averageFunctionComplexity > 5
+  ) {
     score = addPenalty(
       score,
       (input.averageFunctionComplexity - 5) * 8,
@@ -191,8 +264,13 @@ function calculateMaintainabilityScore(
     );
   }
 
-  if (input.averageFunctionComplexity > 10) {
-    score = addPenalty(score, 20);
+  if (
+    input.averageFunctionComplexity > 10
+  ) {
+    score = addPenalty(
+      score,
+      20,
+    );
 
     reasons.push(
       'Average function complexity is significantly elevated.',
@@ -204,7 +282,10 @@ function calculateMaintainabilityScore(
     input.classes === 0 &&
     input.functions > 20
   ) {
-    score = addPenalty(score, 10);
+    score = addPenalty(
+      score,
+      10,
+    );
 
     reasons.push(
       'The repository contains many functions but no detected classes.',
@@ -219,12 +300,13 @@ function calculateMaintainabilityScore(
 
   return {
     score: clampScore(score),
+    available: true,
     reasons,
   };
 }
 
 function calculateArchitectureScore(
-  input: HealthScoreInput['architecture'],
+  input: ArchitectureInput,
 ): HealthDimensionScore {
   let score = 100;
   const reasons: string[] = [];
@@ -270,6 +352,7 @@ function calculateArchitectureScore(
 
   return {
     score: clampScore(score),
+    available: true,
     reasons,
   };
 }
@@ -327,12 +410,13 @@ function calculateDependencyScore(
 
   return {
     score: clampScore(score),
+    available: true,
     reasons,
   };
 }
 
 function calculateActivityScore(
-  input: HealthScoreInput['activity'],
+  input: ActivityInput,
 ): HealthDimensionScore {
   let score = 50;
   const reasons: string[] = [];
@@ -375,6 +459,7 @@ function calculateActivityScore(
 
   return {
     score: clampScore(score),
+    available: true,
     reasons,
   };
 }
@@ -383,47 +468,98 @@ export function calculateHealthScore(
   input: HealthScoreInput,
 ): HealthScoreResult {
   const codeQuality =
-    calculateCodeQualityScore(input.codeQuality);
+    calculateCodeQualityScore(
+      input.codeQuality,
+    );
 
   const security =
-    calculateSecurityScore(input.security);
+    calculateSecurityScore(
+      input.security,
+    );
 
   const maintainability =
-    calculateMaintainabilityScore(input.maintainability);
+    calculateMaintainabilityScore(
+      input.maintainability,
+    );
 
-  const architecture =
-    calculateArchitectureScore(input.architecture);
+  let architecture: HealthDimensionScore;
+
+  if (input.architecture !== null) {
+    architecture =
+      calculateArchitectureScore(
+        input.architecture,
+      );
+  } else {
+    architecture =
+      unavailableDimension(
+        'Architecture analysis is not available yet.',
+      );
+  }
 
   const dependencies =
-    calculateDependencyScore(input.dependencies);
+    calculateDependencyScore(
+      input.dependencies,
+    );
 
-  const activity =
-    calculateActivityScore(input.activity);
+  let activity: HealthDimensionScore;
 
-  const dimensionScores = [
-    codeQuality.score,
-    security.score,
-    maintainability.score,
-    architecture.score,
-    dependencies.score,
-    activity.score,
+  if (input.activity !== null) {
+    activity =
+      calculateActivityScore(
+        input.activity,
+      );
+  } else {
+    activity =
+      unavailableDimension(
+        'Repository activity analysis is not available yet.',
+      );
+  }
+
+  const dimensions = [
+    codeQuality,
+    security,
+    maintainability,
+    architecture,
+    dependencies,
+    activity,
   ];
 
-  const overallScore = clampScore(
-    dimensionScores.reduce(
-      (sum, score) => sum + score,
-      0,
-    ) / dimensionScores.length,
+  const availableScores = dimensions
+    .map(
+      (dimension) => dimension.score,
+    )
+    .filter(
+      (score): score is number =>
+        typeof score === 'number',
+    );
+
+  const overallScore =
+    availableScores.length > 0
+      ? clampScore(
+          availableScores.reduce(
+            (sum, score) =>
+              sum + score,
+            0,
+          ) / availableScores.length,
+        )
+      : 0;
+
+  const reasons = dimensions.flatMap(
+    (dimension) =>
+      dimension.reasons,
   );
 
-  const reasons = [
-    ...codeQuality.reasons,
-    ...security.reasons,
-    ...maintainability.reasons,
-    ...architecture.reasons,
-    ...dependencies.reasons,
-    ...activity.reasons,
-  ];
+  const unavailableCount =
+    dimensions.filter(
+      (dimension) =>
+        !dimension.available,
+    ).length;
+
+  if (unavailableCount > 0) {
+    reasons.push(
+      `${unavailableCount} health dimension(s) are not yet available and are excluded from the overall score.`,
+    );
+  }
 
   return {
     overallScore,
@@ -437,8 +573,6 @@ export function calculateHealthScore(
       activity,
     },
 
-    // Historical analysis snapshots are not available yet,
-    // so a real trend cannot be calculated.
     trend: 'stable',
 
     reasons,
